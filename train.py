@@ -16,6 +16,7 @@ sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 sys.path.append(os.path.join(ROOT_DIR, 'data_prep'))
 import part_dataset
 import show3d_balls
+import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0, help='GPU to use [default: GPU 0]')
@@ -31,6 +32,8 @@ parser.add_argument('--optimizer', default='adam', help='adam or momentum [defau
 parser.add_argument('--decay_step', type=int, default=200000, help='Decay step for lr decay [default: 200000]')
 parser.add_argument('--decay_rate', type=float, default=0.7, help='Decay rate for lr decay [default: 0.7]')
 parser.add_argument('--no_rotation', action='store_true', help='Disable random rotation during training.')
+parser.add_argument('--add_noise', type=int, default=0, help='add noise to encoded data')
+parser.add_argument('--noise_std', type=float, default=0.01, help='std of added noise')
 FLAGS = parser.parse_args()
 
 EPOCH_CNT = 0
@@ -44,6 +47,8 @@ MOMENTUM = FLAGS.momentum
 OPTIMIZER = FLAGS.optimizer
 DECAY_STEP = FLAGS.decay_step
 DECAY_RATE = FLAGS.decay_rate
+NOISE_RATE = FLAGS.add_noise
+NOISE_STD = FLAGS.noise_std
 
 MODEL = importlib.import_module(FLAGS.model) # import network module
 MODEL_FILE = os.path.join(BASE_DIR, FLAGS.model+'.py')
@@ -90,6 +95,27 @@ def get_bn_decay(batch):
                       staircase=True)
     bn_decay = tf.minimum(BN_DECAY_CLIP, 1 - bn_momentum)
     return bn_decay
+
+def get_model_name():
+    mypath = './log_chair_norotation/'
+    onlyfiles = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f))]
+    if NOISE_RATE > 0:
+        models_nums = [i[13: i.find('.')] for i in onlyfiles if re.match('noised_model_*', i)]
+    else:
+        models_nums = [i[6: i.find('.')] for i in onlyfiles if re.match('model_*', i)]
+    print(models_nums)
+    models_nums = list(set(models_nums))
+    models_nums = list(filter(lambda i: unicode(i).isnumeric(), models_nums))
+    models_nums = list(map(int, models_nums)) + [0]
+    model_number = max(models_nums) + 1
+    model_name = 'model_' + str(model_number)
+    if NOISE_RATE > 0:
+        model_name = 'noised_' + model_name + '_rate_' + str(NOISE_RATE) + '_std_' + str(NOISE_STD)
+    model_name = model_name + '.ckpt'
+    return model_name
+
+model_name = get_model_name()
+print('===========NAME:', model_name)
 
 def train():
     with tf.Graph().as_default():
@@ -159,12 +185,13 @@ def train():
             epoch_loss = eval_one_epoch(sess, ops, test_writer)
             if epoch_loss < best_loss:
                 best_loss = epoch_loss
-                save_path = saver.save(sess, os.path.join(LOG_DIR, "best_model_epoch_%03d.ckpt"%(epoch)))
+                name = "best_NOISED_model_epoch_%03d.ckpt"%(epoch) if NOISE_RATE > 0 else "best_model_epoch_%03d.ckpt"%(epoch)
+                save_path = saver.save(sess, os.path.join(LOG_DIR, name))
                 log_string("Model saved in file: %s" % save_path)
 
             # Save the variables to disk.
-            if epoch % 10 == 0:
-                save_path = saver.save(sess, os.path.join(LOG_DIR, "model.ckpt"))
+            if True:#epoch % 10 == 0:
+                save_path = saver.save(sess, os.path.join(LOG_DIR, model_name))
                 log_string("Model saved in file: %s" % save_path)
 
 def get_batch(dataset, idxs, start_idx, end_idx):
@@ -199,14 +226,33 @@ def train_one_epoch(sess, ops, train_writer):
             aug_data = batch_data
         else:
             aug_data = part_dataset.rotate_point_cloud(batch_data)
-        feed_dict = {ops['pointclouds_pl']: aug_data,
-                     ops['labels_pl']: aug_data,
-                     ops['is_training_pl']: is_training,}
-        summary, step, _, loss_val, pcloss_val, pred_val = sess.run([ops['merged'], ops['step'],
-            ops['train_op'], ops['loss'], ops['end_points']['pcloss'], ops['pred']], feed_dict=feed_dict)
-        train_writer.add_summary(summary, step)
-        loss_sum += loss_val
-        pcloss_sum += pcloss_val
+
+        if NOISE_RATE > 0:
+            for _ in range(NOISE_RATE):
+                input_data = part_dataset.add_noise(aug_data, NOISE_STD)
+                feed_dict = {ops['pointclouds_pl']: input_data,
+                             ops['labels_pl']: aug_data,
+                             ops['is_training_pl']: is_training, }
+                summary, step, _, loss_val, pcloss_val, pred_val = sess.run([ops['merged'], ops['step'],
+                                                                             ops['train_op'], ops['loss'],
+                                                                             ops['end_points']['pcloss'], ops['pred']],
+                                                                            feed_dict=feed_dict)
+                train_writer.add_summary(summary, step)
+                loss_sum += loss_val / NOISE_RATE
+                pcloss_sum += pcloss_val / NOISE_RATE
+        else:
+            input_data = aug_data
+            feed_dict = {ops['pointclouds_pl']: input_data,
+                         ops['labels_pl']: aug_data,
+                         ops['is_training_pl']: is_training, }
+            summary, step, _, loss_val, pcloss_val, pred_val = sess.run([ops['merged'], ops['step'],
+                                                                         ops['train_op'], ops['loss'],
+                                                                         ops['end_points']['pcloss'], ops['pred']],
+                                                                        feed_dict=feed_dict)
+            train_writer.add_summary(summary, step)
+            loss_sum += loss_val
+            pcloss_sum += pcloss_val
+
 
         if (batch_idx+1)%10 == 0:
             log_string(' -- %03d / %03d --' % (batch_idx+1, num_batches))

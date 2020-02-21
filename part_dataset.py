@@ -38,6 +38,10 @@ def rotate_point_cloud(batch_data):
         rotated_data[k, ...] = np.dot(shape_pc.reshape((-1, 3)), rotation_matrix)
     return rotated_data
 
+def add_noise(batch_data, std=0.01):
+    noise = np.random.normal(loc=0.0, scale=std, size=batch_data.shape)
+    return batch_data + noise
+
 class PartDataset():
     def __init__(self, root, npoints = 2500, classification = False, class_choice = None, split='train', normalize=True):
         self.npoints = npoints

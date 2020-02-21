@@ -30,6 +30,7 @@ MODEL_PATH = FLAGS.model_path
 GPU_INDEX = FLAGS.gpu
 NUM_POINT = FLAGS.num_point
 MODEL = importlib.import_module(FLAGS.model) # import network module
+print(MODEL)
 DATA_PATH = os.path.join(BASE_DIR, 'data/shapenetcore_partanno_segmentation_benchmark_v0')
 TEST_DATASET = part_dataset.PartDataset(root=DATA_PATH, npoints=NUM_POINT, classification=False, class_choice=FLAGS.category, split='test',normalize=True)
 print(len(TEST_DATASET))
@@ -83,8 +84,8 @@ if __name__=='__main__':
         pred = inference(sess, ops, np.expand_dims(ps,0), batch_size=1) 
         pred = pred.squeeze()
 
-        show3d_balls.showpoints(ps, ballradius=8)
-        show3d_balls.showpoints(pred, ballradius=8)
+        show3d_balls.showpoints(ps, ballradius=4)
+        show3d_balls.showpoints(pred, ballradius=4)
 
         if num_group > 1:
             c_gt = np.zeros_like(pred)
