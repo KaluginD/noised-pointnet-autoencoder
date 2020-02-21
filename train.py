@@ -185,12 +185,12 @@ def train():
             epoch_loss = eval_one_epoch(sess, ops, test_writer)
             if epoch_loss < best_loss:
                 best_loss = epoch_loss
-                name = "best_NOISED_model_epoch_%03d.ckpt"%(epoch) if NOISE_RATE > 0 else "best_model_epoch_%03d.ckpt"%(epoch)
-                save_path = saver.save(sess, os.path.join(LOG_DIR, name))
-                log_string("Model saved in file: %s" % save_path)
+                #name = "best_NOISED_model_epoch_%03d.ckpt"%(epoch) if NOISE_RATE > 0 else "best_model_epoch_%03d.ckpt"%(epoch)
+                #save_path = saver.save(sess, os.path.join(LOG_DIR, name))
+                #log_string("Model saved in file: %s" % save_path)
 
             # Save the variables to disk.
-            if True:#epoch % 10 == 0:
+            #if True:#epoch % 10 == 0:
                 save_path = saver.save(sess, os.path.join(LOG_DIR, model_name))
                 log_string("Model saved in file: %s" % save_path)
 
