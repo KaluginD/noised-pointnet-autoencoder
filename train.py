@@ -97,10 +97,10 @@ def get_bn_decay(batch):
     return bn_decay
 
 def get_model_name():
-    mypath = './log_chair_norotation/'
+    mypath = LOG_DIR
     onlyfiles = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f))]
     if NOISE_RATE > 0:
-        models_nums = [i[13: i.find('.')] for i in onlyfiles if re.match('noised_model_*', i)]
+        models_nums = [i[13: i.find('_rate')] for i in onlyfiles if re.match('noised_model_*', i)]
     else:
         models_nums = [i[6: i.find('.')] for i in onlyfiles if re.match('model_*', i)]
     print(models_nums)

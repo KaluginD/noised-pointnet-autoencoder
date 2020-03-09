@@ -38,9 +38,34 @@ def rotate_point_cloud(batch_data):
         rotated_data[k, ...] = np.dot(shape_pc.reshape((-1, 3)), rotation_matrix)
     return rotated_data
 
-def add_noise(batch_data, std=0.01):
+def add_noise_coordinates(batch_data, std=0.01):
     noise = np.random.normal(loc=0.0, scale=std, size=batch_data.shape)
-    return batch_data + noise
+    return batch_data + njupyter lab
+    oise
+
+def add_noise_nullify_random(batch_data, rat=0.1):
+    indices = np.random.choice(np.arange(batch_data.shape[1]), replace=False,
+                               size=int(batch_data.shape[1] * rat))
+    noised_batch = np.copy(batch_data)
+    noised_batch[:, indices] = 0
+    return noised_batch
+
+def add_noise_nullify_sector(batch_data, rat=0.1):
+    noised_batch = np.copy(batch_data)
+    sector_centers = np.random.uniform(-1., 1, (batch_data.shape[0], 1, 3))
+    diffs = noised_batch - np.repeat(sector_centers, batch_data.shape[1], axis=1)
+    dists = np.linalg.norm(diffs, axis=2)
+    quantiles = np.quantile(dists, rat, axis=1)
+    quantiles = np.repeat(quantiles[:, np.newaxis], 2048, axis=1)
+    noised_batch[np.where(dists < quantiles)] = 0
+    return noised_batch
+
+def add_noise_everywhere(batch_data, rat=0.1):
+    noised_batch = np.copy(batch_data)
+    indices = np.random.choice(np.arange(noised_batch.shape[1]), replace=False,
+                               size=int(noised_batch.shape[1] * rat))
+    noised_batch[:, indices] = np.random.uniform(-1., 1., size=(noised_batch.shape[0], indices.size, 3))
+    return noised_batch
 
 class PartDataset():
     def __init__(self, root, npoints = 2500, classification = False, class_choice = None, split='train', normalize=True):
