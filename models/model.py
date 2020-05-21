@@ -22,7 +22,7 @@ def placeholder_inputs(batch_size, num_point):
     return pointclouds_pl, labels_pl
 
 
-def get_model(point_cloud, is_training, bn_decay=None):
+def get_model(point_cloud, is_training, bn_decay=None, emb_size=1024):
     """ Autoencoder for point clouds.
     Input:
         point_cloud: TF tensor BxNx3
@@ -56,7 +56,7 @@ def get_model(point_cloud, is_training, bn_decay=None):
                          padding='VALID', stride=[1,1],
                          bn=True, is_training=is_training,
                          scope='conv4', bn_decay=bn_decay)
-    net = tf_util.conv2d(net, 1024, [1,1],
+    net = tf_util.conv2d(net, emb_size, [1,1],
                          padding='VALID', stride=[1,1],
                          bn=True, is_training=is_training,
                          scope='conv5', bn_decay=bn_decay)

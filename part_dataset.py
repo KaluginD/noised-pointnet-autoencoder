@@ -40,8 +40,7 @@ def rotate_point_cloud(batch_data):
 
 def add_noise_coordinates(batch_data, std=0.01):
     noise = np.random.normal(loc=0.0, scale=std, size=batch_data.shape)
-    return batch_data + njupyter lab
-    oise
+    return batch_data + noise
 
 def add_noise_nullify_random(batch_data, rat=0.1):
     indices = np.random.choice(np.arange(batch_data.shape[1]), replace=False,
@@ -66,6 +65,15 @@ def add_noise_everywhere(batch_data, rat=0.1):
                                size=int(noised_batch.shape[1] * rat))
     noised_batch[:, indices] = np.random.uniform(-1., 1., size=(noised_batch.shape[0], indices.size, 3))
     return noised_batch
+
+def add_noise(batch_data, rat=0.1, proportion=(1./3, 1./3, 1./3)):
+    noise_type = np.random.choice(3, p=proportion)
+    if noise_type == 0:
+        return add_noise_nullify_random(batch_data, rat)
+    elif noise_type == 1:
+        return add_noise_nullify_sector(batch_data, rat)
+    elif noise_type == 2:
+        return add_noise_everywhere(batch_data, rat)
 
 class PartDataset():
     def __init__(self, root, npoints = 2500, classification = False, class_choice = None, split='train', normalize=True):

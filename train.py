@@ -15,8 +15,7 @@ sys.path.append(os.path.join(ROOT_DIR, 'models'))
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 sys.path.append(os.path.join(ROOT_DIR, 'data_prep'))
 import part_dataset
-import show3d_balls
-import re
+# import show3d_balls
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0, help='GPU to use [default: GPU 0]')
@@ -33,7 +32,10 @@ parser.add_argument('--decay_step', type=int, default=200000, help='Decay step f
 parser.add_argument('--decay_rate', type=float, default=0.7, help='Decay rate for lr decay [default: 0.7]')
 parser.add_argument('--no_rotation', action='store_true', help='Disable random rotation during training.')
 parser.add_argument('--add_noise', type=int, default=0, help='add noise to encoded data')
-parser.add_argument('--noise_std', type=float, default=0.01, help='std of added noise')
+parser.add_argument('--noise_rate', type=float, default=0.1, help='std of added noise')
+parser.add_argument('--emb_size', type=int, default=1024, help='embedding size')
+parser.add_argument('--noises_probs', nargs='+', type=float, default=[1./3, 1./3, 1./3], help='probabilities of different types of noises')
+
 FLAGS = parser.parse_args()
 
 EPOCH_CNT = 0
@@ -47,8 +49,10 @@ MOMENTUM = FLAGS.momentum
 OPTIMIZER = FLAGS.optimizer
 DECAY_STEP = FLAGS.decay_step
 DECAY_RATE = FLAGS.decay_rate
-NOISE_RATE = FLAGS.add_noise
-NOISE_STD = FLAGS.noise_std
+NOISE_COUNT = FLAGS.add_noise
+NOISE_RATE = FLAGS.noise_rate
+EMB_SIZE = FLAGS.emb_size
+NOISES_PROBS = FLAGS.noises_probs
 
 MODEL = importlib.import_module(FLAGS.model) # import network module
 MODEL_FILE = os.path.join(BASE_DIR, FLAGS.model+'.py')
@@ -71,9 +75,29 @@ DATA_PATH = os.path.join(BASE_DIR, 'data/shapenetcore_partanno_segmentation_benc
 TRAIN_DATASET = part_dataset.PartDataset(root=DATA_PATH, npoints=NUM_POINT, classification=False, class_choice=FLAGS.category, split='trainval')
 TEST_DATASET = part_dataset.PartDataset(root=DATA_PATH, npoints=NUM_POINT, classification=False, class_choice=FLAGS.category, split='test')
 
+def get_model_n_log_file_names():
+    mypath = LOG_DIR
+    model_name = 'model_' + datetime.now().isoformat('_')[:-10]
+
+    if NOISE_COUNT > 0:
+        model_name = 'noised_' + model_name
+    log_file = model_name + '.txt'
+    model_name = model_name + '.ckpt'
+    return model_name, log_file
+
+
+model_name, log_file = get_model_n_log_file_names()
+
+print('===========NAME:', model_name)
+
+MODEL_LOG_FOUT = open(os.path.join(LOG_DIR, log_file), 'w')
+MODEL_LOG_FOUT.write(str(FLAGS)+'\n')
+
 def log_string(out_str):
     LOG_FOUT.write(out_str+'\n')
     LOG_FOUT.flush()
+    MODEL_LOG_FOUT.write(out_str + '\n')
+    MODEL_LOG_FOUT.flush()
     print(out_str)
 
 def get_learning_rate(batch):
@@ -96,27 +120,6 @@ def get_bn_decay(batch):
     bn_decay = tf.minimum(BN_DECAY_CLIP, 1 - bn_momentum)
     return bn_decay
 
-def get_model_name():
-    mypath = LOG_DIR
-    onlyfiles = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f))]
-    if NOISE_RATE > 0:
-        models_nums = [i[13: i.find('_rate')] for i in onlyfiles if re.match('noised_model_*', i)]
-    else:
-        models_nums = [i[6: i.find('.')] for i in onlyfiles if re.match('model_*', i)]
-    print(models_nums)
-    models_nums = list(set(models_nums))
-    models_nums = list(filter(lambda i: unicode(i).isnumeric(), models_nums))
-    models_nums = list(map(int, models_nums)) + [0]
-    model_number = max(models_nums) + 1
-    model_name = 'model_' + str(model_number)
-    if NOISE_RATE > 0:
-        model_name = 'noised_' + model_name + '_rate_' + str(NOISE_RATE) + '_std_' + str(NOISE_STD)
-    model_name = model_name + '.ckpt'
-    return model_name
-
-model_name = get_model_name()
-print('===========NAME:', model_name)
-
 def train():
     with tf.Graph().as_default():
         with tf.device('/gpu:'+str(GPU_INDEX)):
@@ -132,7 +135,7 @@ def train():
 
             print "--- Get model and loss"
             # Get model and loss 
-            pred, end_points = MODEL.get_model(pointclouds_pl, is_training_pl, bn_decay=bn_decay)
+            pred, end_points = MODEL.get_model(pointclouds_pl, is_training_pl, bn_decay=bn_decay, emb_size=EMB_SIZE)
             loss, end_points = MODEL.get_loss(pred, labels_pl, end_points)
             tf.summary.scalar('loss', loss)
 
@@ -177,6 +180,10 @@ def train():
                'end_points': end_points}
 
         best_loss = 1e20
+
+        save_path = saver.save(sess, os.path.join(LOG_DIR, model_name))
+        log_string("Model saved in file: %s" % save_path)
+
         for epoch in range(MAX_EPOCH):
             log_string('**** EPOCH %03d ****' % (epoch))
             sys.stdout.flush()
@@ -185,12 +192,6 @@ def train():
             epoch_loss = eval_one_epoch(sess, ops, test_writer)
             if epoch_loss < best_loss:
                 best_loss = epoch_loss
-                #name = "best_NOISED_model_epoch_%03d.ckpt"%(epoch) if NOISE_RATE > 0 else "best_model_epoch_%03d.ckpt"%(epoch)
-                #save_path = saver.save(sess, os.path.join(LOG_DIR, name))
-                #log_string("Model saved in file: %s" % save_path)
-
-            # Save the variables to disk.
-            #if True:#epoch % 10 == 0:
                 save_path = saver.save(sess, os.path.join(LOG_DIR, model_name))
                 log_string("Model saved in file: %s" % save_path)
 
@@ -217,6 +218,22 @@ def train_one_epoch(sess, ops, train_writer):
 
     loss_sum = 0
     pcloss_sum = 0
+
+    def train_one_batch(input_data, output_data, is_training, ops):
+        feed_dict = {ops['pointclouds_pl']: input_data,
+                     ops['labels_pl']: aug_data,
+                     ops['is_training_pl']: is_training
+                     }
+        summary, step, _, loss_val, pcloss_val, pred_val = sess.run([ops['merged'], ops['step'],
+                                                                     ops['train_op'], ops['loss'],
+                                                                     ops['end_points']['pcloss'], ops['pred']],
+                                                                    feed_dict=feed_dict)
+        train_writer.add_summary(summary, step)
+        if NOISE_COUNT > 0:
+            loss_val /= NOISE_COUNT
+            pcloss_val /= NOISE_COUNT
+        return loss_sum + loss_val, pcloss_sum + pcloss_val
+
     for batch_idx in range(num_batches):
         start_idx = batch_idx * BATCH_SIZE
         end_idx = (batch_idx+1) * BATCH_SIZE
@@ -227,39 +244,18 @@ def train_one_epoch(sess, ops, train_writer):
         else:
             aug_data = part_dataset.rotate_point_cloud(batch_data)
 
-        if NOISE_RATE > 0:
-            for _ in range(NOISE_RATE):
-                input_data = part_dataset.add_noise(aug_data, NOISE_STD)
-                feed_dict = {ops['pointclouds_pl']: input_data,
-                             ops['labels_pl']: aug_data,
-                             ops['is_training_pl']: is_training, }
-                summary, step, _, loss_val, pcloss_val, pred_val = sess.run([ops['merged'], ops['step'],
-                                                                             ops['train_op'], ops['loss'],
-                                                                             ops['end_points']['pcloss'], ops['pred']],
-                                                                            feed_dict=feed_dict)
-                train_writer.add_summary(summary, step)
-                loss_sum += loss_val / NOISE_RATE
-                pcloss_sum += pcloss_val / NOISE_RATE
+        if NOISE_COUNT > 0:
+            for _ in range(NOISE_COUNT):
+                input_data = part_dataset.add_noise(aug_data, rat=NOISE_RATE, proportion=NOISES_PROBS)
+                loss_sum, pcloss_sum = train_one_batch(input_data, aug_data, is_training, ops)
         else:
-            input_data = aug_data
-            feed_dict = {ops['pointclouds_pl']: input_data,
-                         ops['labels_pl']: aug_data,
-                         ops['is_training_pl']: is_training, }
-            summary, step, _, loss_val, pcloss_val, pred_val = sess.run([ops['merged'], ops['step'],
-                                                                         ops['train_op'], ops['loss'],
-                                                                         ops['end_points']['pcloss'], ops['pred']],
-                                                                        feed_dict=feed_dict)
-            train_writer.add_summary(summary, step)
-            loss_sum += loss_val
-            pcloss_sum += pcloss_val
+            loss_sum, pcloss_sum = train_one_batch(aug_data, aug_data, is_training, ops)
 
 
         if (batch_idx+1)%10 == 0:
             log_string(' -- %03d / %03d --' % (batch_idx+1, num_batches))
             log_string('mean loss: %f' % (loss_sum / 10))
             log_string('mean pc loss: %f' % (pcloss_sum / 10))
-            total_correct = 0
-            total_seen = 0
             loss_sum = 0
             pcloss_sum = 0
         
