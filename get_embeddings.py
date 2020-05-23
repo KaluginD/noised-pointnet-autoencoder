@@ -26,7 +26,7 @@ import tf_util
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='model', help='Model name [default: model]')
 FLAGS = parser.parse_args()
-MODEL = FLAGS.model
+MODEL_PATH = FLAGS.model
 
 NUM_POINT = 2048
 
@@ -46,7 +46,7 @@ def get_model(MODEL_PATH, batch_size=1, num_point=2048):
             is_training_pl = tf.placeholder(tf.bool, shape=())
             pred, end_points = MODEL.get_model(pointclouds_pl, is_training_pl)
             loss = MODEL.get_loss(pred, labels_pl, end_points)
-            embedding = tf.placeholder(tf.float32, shape=(1, 1024))
+            embedding = tf.placeholder(tf.float32, shape=(1, 128))
             net = tf_util.fully_connected(embedding, 1024, bn=True, is_training=False, scope='fc1', bn_decay=None)
             net = tf_util.fully_connected(net, 1024, bn=True, is_training=False, scope='fc2', bn_decay=None)
             net = tf_util.fully_connected(net, num_point * 3, activation_fn=None, scope='fc3')
@@ -69,16 +69,19 @@ def get_model(MODEL_PATH, batch_size=1, num_point=2048):
         return sess, ops, net
 
 
+print('loading data...')
 point_clouds = np.array([TRAIN_DATASET[i][0] for i in range(length)])
-
-sess, ops, decoder = get_model(MODEL)
-
+print('data is loaded')
+print('loading model...')
+sess, ops, decoder = get_model(MODEL_PATH)
+print('model is loaded')
 for i in range(0, length, 100):
     curr_100 = []
+    print(i)
     for j in range(i, i + 100):
         embedding = sess.run(ops['loss'][1]['embedding'], feed_dict={ops['pointclouds_pl']: point_clouds[i: i + 1], ops['is_training_pl']: False})
         curr_100.append(embedding)
     embeddings = np.array(curr_100)
-    np.save('embeddings//embedings_{}_{}.npy'.format(MODEL, i), embeddings)
+    np.save('embeddings/embedings_{}_{}.npy'.format(MODEL_PATH.split('/')[-1], i), embeddings)
 
 
