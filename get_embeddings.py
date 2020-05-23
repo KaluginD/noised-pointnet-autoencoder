@@ -78,8 +78,8 @@ print('model is loaded')
 for i in range(0, length, 100):
     curr_100 = []
     print(i)
-    for j in range(i, i + 100):
-        embedding = sess.run(ops['loss'][1]['embedding'], feed_dict={ops['pointclouds_pl']: point_clouds[i: i + 1], ops['is_training_pl']: False})
+    for j in range(i, min(i + 100, length)):
+        embedding = sess.run(ops['loss'][1]['embedding'], feed_dict={ops['pointclouds_pl']: point_clouds[j: j + 1], ops['is_training_pl']: False})
         curr_100.append(embedding)
     embeddings = np.array(curr_100)
     np.save('embeddings/embedings_{}_{}.npy'.format(MODEL_PATH.split('/')[-1], i), embeddings)
