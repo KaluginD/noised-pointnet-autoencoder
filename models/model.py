@@ -22,7 +22,7 @@ def placeholder_inputs(batch_size, num_point):
     return pointclouds_pl, labels_pl
 
 
-def get_model(point_cloud, is_training, bn_decay=None, emb_size=1024):
+def get_model(point_cloud, is_training, bn_decay=None, emb_size=128):
     """ Autoencoder for point clouds.
     Input:
         point_cloud: TF tensor BxNx3
